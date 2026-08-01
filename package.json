@@ -1,16 +1,16 @@
 {
   "name": "prism-aggregator",
-  "version": "2.0.0",
-  "description": "Prism Aggregator Node.js Server",
+  "version": "1.0.0",
+  "description": "Multi-source Database Aggregator",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
     "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
