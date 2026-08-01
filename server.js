@@ -16,10 +16,11 @@ const stealthHeaders = {
   "Cache-Control": "max-age=0"
 };
 
+// Updated target domains list
 const targetDomains = [
-  { name: "movies4u.gr", alias: "Database One", baseUrl: "https://movies4u.gr", searchPath: "/?s=" },
-  { name: "worldfree4u.dev", alias: "Database Two", baseUrl: "https://worldfree4u.dev", searchPath: "/?s=" },
-  { name: "bollyflix.ski", alias: "Database Three", baseUrl: "https://bollyflix.ski", searchPath: "/?s=" }
+  { name: "filmevde.com", alias: "Database One", baseUrl: "https://filmevde.com", searchPath: "/?s=" },
+  { name: "cinevoods.com", alias: "Database Two", baseUrl: "https://cinevoods.com", searchPath: "/?s=" },
+  { name: "bolly-in.com", alias: "Database Three", baseUrl: "https://bolly-in.com", searchPath: "/?s=" }
 ];
 
 // --- ROUTE 1: Serve Frontend UI ---
@@ -31,7 +32,7 @@ app.get("/", (req, res) => {
 // --- ROUTE 2: Direct Search API ---
 app.get("/api/search", async (req, res) => {
   const query = req.query.q;
-  if (!query) return res.status(400).json({ error: "Missing query" });
+  if (!query) return res.status(400).json({ error: "Missing query parameter" });
 
   try {
     const startTime = Date.now();
@@ -71,7 +72,7 @@ app.use((req, res) => {
 });
 
 /**
- * Search Target Domains using Cheerio (Two-Tier WordPress Card Scraper)
+ * Search Target Domains using Cheerio
  */
 async function searchTargetDomain(domainConfig, query) {
   try {
@@ -94,7 +95,6 @@ async function searchTargetDomain(domainConfig, query) {
     const $ = cheerio.load(rawHtml);
     const foundItems = [];
 
-    // Cleaned Blacklist (Removed path structural keywords like /movies/ and /web-series/)
     const blacklistedWords = [
       "category", "tag", "author", "contact", "about", "how-to-download", "?s=", 
       "wp-content", "login", "register", "dmca", "disclaimer", "privacy", "policy", 
@@ -104,8 +104,8 @@ async function searchTargetDomain(domainConfig, query) {
 
     const internalDomain = domainConfig.name.split('.')[0].replace("www.", "");
 
-    // --- Strategy A: Post Card Container Scraper ---
-    const postCards = $("article, .post, .result-item, .item-list, .latest-kino, .movie-card");
+    // Strategy A: Target WordPress Article Cards
+    const postCards = $("article, .post, .result-item, .item-list, .latest-kino, .movie-card, .entry");
     
     if (postCards.length > 0) {
       postCards.each((_, card) => {
@@ -121,12 +121,10 @@ async function searchTargetDomain(domainConfig, query) {
         if (isInternal && !isBlacklisted && lowerHref.length > 20) {
           const fullUrl = href.startsWith("/") ? `${domainConfig.baseUrl}${href}` : href;
 
-          // Title Extraction: Check headers or link titles
-          let title = $card.find("h1, h2, h3, .entry-title, .post-title").text().replace(/\s+/g, ' ').trim() || 
+          let title = $card.find("h1, h2, h3, .entry-title, .post-title, .title").text().replace(/\s+/g, ' ').trim() || 
                       linkEl.text().replace(/\s+/g, ' ').trim() || 
                       linkEl.attr("title") || "";
 
-          // Fallback to URL Slug
           if (title.length <= 5) {
             try {
               const urlObj = new URL(fullUrl);
@@ -138,7 +136,6 @@ async function searchTargetDomain(domainConfig, query) {
             } catch (e) {}
           }
 
-          // Image Extraction
           let image = null;
           const imgEl = $card.find("img").first();
           if (imgEl.length) {
@@ -160,9 +157,9 @@ async function searchTargetDomain(domainConfig, query) {
       });
     }
 
-    // --- Strategy B: Fallback Global Anchor Scraper ---
+    // Strategy B: Fallback Global Anchor Scan
     if (foundItems.length === 0) {
-      $("a").each((_, el) => {
+      $("a[href]").each((_, el) => {
         const $el = $(el);
         const href = $el.attr("href");
         if (!href) return;
@@ -207,7 +204,7 @@ async function searchTargetDomain(domainConfig, query) {
       });
     }
 
-    // Deduplicate Results
+    // Deduplicate array by URL
     const uniqueMap = new Map();
     foundItems.forEach(item => {
       if (uniqueMap.has(item.url)) {
@@ -228,14 +225,14 @@ async function searchTargetDomain(domainConfig, query) {
 }
 
 /**
- * Scrape Target Post Page using Cheerio State Machine
+ * Scrape Target Post Page
  */
 async function scrapeTargetPage(targetUrl, cleanTitle) {
   const domainName = new URL(targetUrl).hostname.replace('www.', '');
   let displayAlias = "External Database";
-  if (domainName.includes("movies4u")) displayAlias = "Database One";
-  if (domainName.includes("worldfree4u")) displayAlias = "Database Two";
-  if (domainName.includes("bollyflix")) displayAlias = "Database Three";
+  if (domainName.includes("filmevde")) displayAlias = "Database One";
+  if (domainName.includes("cinevoods")) displayAlias = "Database Two";
+  if (domainName.includes("bolly-in")) displayAlias = "Database Three";
 
   try {
     const postRes = await fetch(targetUrl, { headers: stealthHeaders, redirect: "follow" });
@@ -518,9 +515,9 @@ function getHTML() {
     '        </div>',
     '        ',
     '        <div class="suggestions">',
-    '            <div class="tag"><span class="tag-dot"></span>Database One</div>',
-    '            <div class="tag"><span class="tag-dot" style="background: #eab308;"></span>Database Two</div>',
-    '            <div class="tag"><span class="tag-dot" style="background: #3b82f6;"></span>Database Three</div>',
+    '            <div class="tag"><span class="tag-dot"></span>Database One (Filmevde)</div>',
+    '            <div class="tag"><span class="tag-dot" style="background: #eab308;"></span>Database Two (Cinevoods)</div>',
+    '            <div class="tag"><span class="tag-dot" style="background: #3b82f6;"></span>Database Three (Bolly-In)</div>',
     '        </div>',
     '        ',
     '        <div class="stats-dashboard">',
