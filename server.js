@@ -10,7 +10,7 @@ const stealthHeaders = {
   "Accept-Language": "en-US,en;q=0.5"
 };
 
-// Configured Target Domains
+// Target piracy databases
 const targetDomains = [
   { name: "filmevde.com", baseUrl: "https://filmevde.com", searchPath: "/?s=" },
   { name: "cinevoods.com", baseUrl: "https://cinevoods.com", searchPath: "/?s=" },
@@ -26,13 +26,16 @@ app.use((req, res, next) => {
 
 // Root Route Notice
 app.get('/', (req, res) => {
-  res.send("PRISM Aggregator Node is Active.");
+  res.send("PRISM Aggregator API Node is Live.");
 });
 
-// ROUTE 1: Aggregator Search Node
+// ROUTE 1: Aggregator Multi-Domain Search
 app.get('/api/search', async (req, res) => {
-  const query = req.query.q;
+  let query = req.query.q;
   if (!query) return res.status(400).json({ error: "Missing query parameter" });
+
+  // Clean special characters (colons, dashes, etc.) that break WordPress search
+  query = query.replace(/[:\-\'\"]/g, ' ').replace(/\s+/g, ' ').trim();
 
   try {
     const searchPromises = targetDomains.map(domain => searchTargetDomain(domain, query));
@@ -62,7 +65,7 @@ app.get('/api/scrape', async (req, res) => {
 });
 
 /**
- * Searches Target Domains (Filters out Category/Navigation Spam)
+ * Searches Target Domains (Safely extracts post links without deleting category subfolders)
  */
 async function searchTargetDomain(domainConfig, query) {
   try {
@@ -77,15 +80,14 @@ async function searchTargetDomain(domainConfig, query) {
     const foundItems = [];
     const internalDomain = domainConfig.name.split('.')[0];
     
-    // Explicit Category & Navigation Exclusions
-    const excludedPaths = [
+    // Only exclude TRUE system/static pages (REMOVED 'dual-audio-movies', '720p-movies', etc.)
+    const systemExclusions = [
       '/category/', '/tag/', '/author/', '/contact', '/about', '/dmca', '/disclaimer',
       '/privacy-policy', '/terms', '/page/', '/genre/', '/year/', '/quality/',
-      'bollywood-movies', 'hollywood-movies', 'dual-audio-movies', 'web-series',
-      'hindi-dubbed', 'south-hindi', '300mb-movies', '720p-movies', '1080p-movies'
+      '/wp-includes/', '/wp-content/', 'login', 'register'
     ];
 
-    // Target WordPress Post Cards Specifically
+    // Scan for post elements across WordPress card layouts
     $('article, .post, .result-item, .entry, .movie-card, h2.entry-title, h2.post-title').each((_, container) => {
       const $container = $(container);
       const linkEl = $container.is('a') ? $container : $container.find('a[href]').first();
@@ -94,9 +96,9 @@ async function searchTargetDomain(domainConfig, query) {
       
       const lowerHref = href.toLowerCase();
       const isInternal = lowerHref.includes(internalDomain) || href.startsWith("/");
-      const isCategorySpam = excludedPaths.some(p => lowerHref.includes(p));
+      const isSystemPage = systemExclusions.some(p => lowerHref.includes(p));
       
-      if (isInternal && !isCategorySpam && lowerHref.length > 20) {
+      if (isInternal && !isSystemPage && lowerHref.length > 20) {
         const fullUrl = href.startsWith("/") ? `${domainConfig.baseUrl}${href}` : href;
         
         let title = $container.find('h1, h2, h3, .entry-title, .post-title, .title').text().trim() ||
@@ -111,7 +113,7 @@ async function searchTargetDomain(domainConfig, query) {
           image = `${domainConfig.baseUrl}${image}`;
         }
 
-        if (title && title.length > 4) {
+        if (title && title.length > 3) {
           foundItems.push({
             url: fullUrl,
             title: title,
@@ -133,7 +135,7 @@ async function searchTargetDomain(domainConfig, query) {
 }
 
 /**
- * Extracts Outbound File Links and Combines Page Title + Option Text
+ * Extracts Outbound File Links & Combines Page Header + Option Text
  */
 async function scrapeTargetPage(targetUrl, domainName, cleanTitle) {
   try {
@@ -147,7 +149,7 @@ async function scrapeTargetPage(targetUrl, domainName, cleanTitle) {
     const extractedLinks = [];
     const extractedScreenshots = [];
 
-    // Extract the Actual Article Title from the Post Page
+    // Extract page main header title
     let pageTitle = $('h1.entry-title, h1.post-title, h1.title, h1').first().text().replace(/\s+/g, ' ').trim();
     if (!pageTitle || pageTitle.length < 5) pageTitle = cleanTitle || "Movie File";
 
@@ -177,7 +179,6 @@ async function scrapeTargetPage(targetUrl, domainName, cleanTitle) {
       if (!isInternal && !isSocial && href.startsWith("http")) {
         let linkBtnText = $(el).text().replace(/\s+/g, ' ').trim();
         
-        // If the button text is generic ("Download"), read surrounding block text
         const genericNames = ['download', 'download now', 'click here', 'get link', 'link', 'download asset'];
         if (!linkBtnText || genericNames.includes(linkBtnText.toLowerCase())) {
           const parentText = $(el).closest('p, div, li, td').text().replace(/\s+/g, ' ').trim();
@@ -188,9 +189,7 @@ async function scrapeTargetPage(targetUrl, domainName, cleanTitle) {
           }
         }
 
-        // Construct Full Descriptive Title (Article Title + File Option)
         const fullDescriptiveTitle = `${pageTitle} — ${linkBtnText}`;
-
         extractedLinks.push({ url: href, title: fullDescriptiveTitle });
       }
     });
@@ -211,5 +210,5 @@ async function scrapeTargetPage(targetUrl, domainName, cleanTitle) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
